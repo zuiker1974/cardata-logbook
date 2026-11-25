@@ -10,8 +10,11 @@ osoitevälimuisti. Lisäosan asetussivun asetuksia (options.json) ei siirretä.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import re
+import shutil
 import sqlite3
 import zipfile
 from datetime import datetime
@@ -114,3 +117,84 @@ def import_package_if_fresh(data_dir: str | os.PathLike, export_dir: str | os.Pa
     src.rename(done)
     _LOG.warning("Siirtopaketti tuotu (%s tiedostoa). Paketti nimettiin uudelleen: %s", len(names), done.name)
     return True
+
+
+BACKUP_RE = re.compile(r"^bmw_logbook_([a-z0-9_]{2,16})_backup_(\d{4})-(\d{2})\.db$")
+
+
+def _latest_backups(export_dir: Path) -> dict[str, Path]:
+    found: dict[str, tuple[tuple, Path]] = {}
+    if not export_dir.exists():
+        return {}
+    for car in export_dir.iterdir():
+        folder = car / "varmuuskopiot"
+        if not car.is_dir() or not folder.is_dir():
+            continue
+        for p in folder.iterdir():
+            m = BACKUP_RE.match(p.name)
+            if not m:
+                continue
+            key = (int(m.group(2)), int(m.group(3)), p.stat().st_mtime)
+            vid = m.group(1)
+            if vid not in found or key > found[vid][0]:
+                found[vid] = (key, p)
+    return {vid: p for vid, (_, p) in found.items()}
+
+
+def _vehicle_from_backup(vid: str, db: Path) -> dict:
+    conn = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+            raise ValueError(f"varmuuskopio {db.name} on vioittunut")
+        row = conn.execute("SELECT * FROM vehicle_info ORDER BY id DESC LIMIT 1").fetchone()
+        info = dict(row) if row else {}
+    finally:
+        conn.close()
+    powertrain = str(info.get("powertrain") or "PHEV").upper()
+    return {
+        "id": vid,
+        "plate": info.get("plate") or "",
+        "make": info.get("make") or "",
+        "model": info.get("model") or "",
+        "powertrain": powertrain if powertrain in ("BEV", "PHEV", "ICE") else "PHEV",
+        "vin": info.get("vin") or "",
+        "driver": info.get("driver") or "",
+        "enabled": True,
+        "auto_discover": True,
+        "use_home_charger": powertrain != "ICE",
+        "entities": {},
+    }
+
+
+def import_backups_if_fresh(data_dir: str | os.PathLike, export_dir: str | os.PathLike) -> list[str]:
+    """Palauttaa autot raporttikansion tietokantavarmuuskopioista, jos /data on tyhjä.
+
+    Käytetään, kun siirtopakettia ei ole (esim. vanhaa asennusta ei voi enää päivittää).
+    Tietokannan mukana tulevat matkat, kulut, lukitukset ja muutosloki. Autot luodaan
+    tietokannan autotiedoista, ja entiteetit haetaan automaattisesti.
+    """
+    if not data_is_empty(data_dir) or package_path(export_dir).exists():
+        return []
+    backups = _latest_backups(Path(export_dir))
+    if not backups:
+        return []
+    data = Path(data_dir)
+    vehicles = []
+    for vid, src in sorted(backups.items()):
+        try:
+            vehicles.append(_vehicle_from_backup(vid, src))
+        except Exception:
+            _LOG.exception("%s: varmuuskopiota %s ei voitu käyttää", vid, src)
+            continue
+        dest = data / vid / "logbook.db"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        tmp = dest.with_name(dest.name + ".tmp")
+        shutil.copyfile(src, tmp)
+        os.replace(tmp, dest)
+        _LOG.warning("%s: tietokanta palautettu varmuuskopiosta %s", vid, src.name)
+    if vehicles:
+        from .vehicle_store import VehicleStore
+
+        VehicleStore(data).save({"home_charger_entity": "", "vehicles": vehicles})
+    return [v["id"] for v in vehicles]

@@ -307,3 +307,34 @@ def test_transfer_package_roundtrip(tmp_path):
     # olemassa olevan asennuksen päälle ei tuoda
     export_package(old, share)
     assert not import_package_if_fresh(new, share)
+
+
+def test_restore_from_backups(tmp_path):
+    """Vanhan asennuksen raporttikansion varmuuskopioista palautus, kun siirtopakettia ei ole."""
+    from logbook.transfer import import_backups_if_fresh
+    from test_logbook import trip
+
+    old = tmp_path / "old"
+    share = tmp_path / "share"
+    VehicleStore(old).load_or_migrate(V02_OPTIONS)
+    s = parse_settings(V02_OPTIONS, data_dir=str(old), store=VehicleStore(old).load())
+    s.export_dir = str(share)
+    app = LogbookApp(s, store=VehicleStore(old))
+    app.services["530e"].db.insert_trip(trip(1, 6, 10000, 15, "business", "Asiakas"))
+    app.services["530e"].backup_db()
+    new = tmp_path / "new"
+    assert import_backups_if_fresh(new, share) == ["530e"]
+    stored = VehicleStore(new).load()["vehicles"][0]
+    assert (stored["id"], stored["plate"], stored["powertrain"], stored["driver"]) == ("530e", "ABC-123", "PHEV", "Kuljettaja")
+    s2 = parse_settings({}, data_dir=str(new), store=VehicleStore(new).load())
+    assert not s2.vehicle_errors
+    s2.export_dir = str(share)
+    app2 = LogbookApp(s2, store=VehicleStore(new))
+    assert len(app2.services["530e"].db.query("SELECT id FROM trips")) == 1
+    # VIN puuttuu: täydennetään yksiselitteisen mallin perusteella ja entiteetit löytyvät
+    asyncio.run(app2._on_connected(FakeHA()))
+    v = s2.vehicle("530e")
+    assert v.vin == VIN_A and v.entity("odometer") == "sensor.phev_mileage"
+    assert not app2.services["530e"].entity_status["_not_configured"]
+    # toista kertaa ei palauteta
+    assert import_backups_if_fresh(new, share) == []
