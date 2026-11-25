@@ -1,5 +1,5 @@
 name: CarData Logbook
-version: "1.0.1"
+version: "1.0.2"
 slug: cardata_logbook
 description: Automaattinen ajopäiväkirja Home Assistantin BMW CarData -integraation datasta
 url: https://github.com/zuiker1974/cardata-logbook

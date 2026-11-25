@@ -1,5 +1,11 @@
 # Muutosloki
 
+## 1.0.2
+- Korjaus: lataus muualla kuin kotona jäi kirjaamatta, jos auto lähti kotoa ilman irrotustietoa
+  (latausmenetelmä pysyi `AC_TYPE2PLUG`). Lataus tunnistetaan nyt myös auton lataustilasta.
+- Päivityksen jälkeen lisäosa hakee kerran Home Assistantin historiasta (`backfill_max_hours`, oletus 24 h)
+  lataukset, jotka puuttuvat kirjanpidosta. Jo kirjattuihin latauksiin ei kosketa.
+
 ## 1.0.1
 - Uusi logo ilman BMW-nimeä (lisäosakaupan kuva näytti vielä vanhaa nimeä).
 - Palautus raporttikansion tietokantavarmuuskopioista, jos siirtopakettia ei ole.

@@ -12,18 +12,19 @@ from . import timeutil
 from .geocode import Geocoder
 from .ha_client import HAClient, state_timestamp
 from .service import VehicleService
-from .consumption import ConsumptionTracker
+from .consumption import ConsumptionTracker, recover_charges
 from .trip_manager import NOT_CONFIGURED, STATUS_LABELS, Event, TripManager, Zone
 from .discovery import DiscoveredVehicle, discover, find_stream_status
 from .vehicle_registry import CONSUMPTION_ROLES, REQUIRED_ROLES, Settings, load_settings
 from .vehicle_store import VehicleStore
 
 # Kululaskennan tilakone tarvitsee nämä roolit (ajotunnistus ei käytä kulurooleja)
-CONSUMPTION_INPUTS = set(CONSUMPTION_ROLES) | {"location", "soc", "charging_method"}
+CONSUMPTION_INPUTS = set(CONSUMPTION_ROLES) | {"location", "soc", "charging_method", "charging_state"}
 
 _LOG = logging.getLogger("logbook")
 
 TICK_S = 15
+RECOVER_KEY = "charge_recovery_1.0.2"
 GEOCODE_BATCH = 5
 
 
@@ -160,6 +161,7 @@ class LogbookApp:
             return
         await client.subscribe_entities(watch, lambda eid, st: queue.put_nowait((eid, st)))
         await self._backfill(client, by_id)
+        await self._recover_charges(client)
         asyncio.create_task(self._consume(queue, client))
 
     async def _discover(self, client: HAClient, by_id: dict) -> None:
@@ -276,6 +278,41 @@ class LogbookApp:
                     skip_trip=tm_last is not None and ts <= tm_last,
                     skip_consumption=seed or (ct_last is not None and ts <= ct_last),
                 )
+
+    async def _recover_charges(self, client: HAClient) -> None:
+        """Kertaluonteinen haku: lataukset, jotka aiempi versio ohitti (auto siirtyi kytkettynä
+        ja latasi muualla ilman uutta kytkentätietoa). Lisää vain puuttuvat, ei kosketa vanhoihin."""
+        hours = self.settings.backfill_max_hours
+        if hours <= 0:
+            return
+        now = timeutil.now_utc()
+        start = now - timedelta(hours=hours)
+        for vid, svc in self.services.items():
+            if svc.consumption is None or svc.db.get_state(RECOVER_KEY):
+                continue
+            targets = {eid: role for eid, ts in self.entity_map.items() for v, role in ts if v == vid and role in CONSUMPTION_INPUTS}
+            if not targets:
+                continue
+            try:
+                hist = await client.history(list(targets), start, now)
+            except Exception as exc:
+                _LOG.warning("%s: latausten palautuksen historiahaku epäonnistui: %s", vid, exc)
+                continue
+            events = []
+            for eid, rows in hist.items():
+                role = targets.get(eid)
+                for st in rows:
+                    events.append((state_timestamp(st), role, str(st.get("state", "")), st.get("attributes") or {}))
+            events.sort(key=lambda e: e[0])
+            existing = svc.db.list_consumption(timeutil.to_iso(start - timedelta(days=2)), None, include_voided=True, kind="charge")
+            try:
+                for ev in recover_charges(svc.vehicle, self.settings, events, start, existing, zones=self.zones):
+                    svc.on_consumption(ev)
+                    _LOG.info("%s: palautettu puuttuva lataus %s (%.2f kWh)", vid, ev["start_time"], ev["quantity"])
+            except Exception:
+                _LOG.exception("%s: latausten palautus epäonnistui", vid)
+                continue
+            svc.db.set_state(RECOVER_KEY, timeutil.now_iso())
 
     async def _consume(self, queue: asyncio.Queue, client: HAClient) -> None:
         while not client.closed.is_set():
