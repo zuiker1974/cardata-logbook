@@ -1,0 +1,7 @@
+<h1>{{ v.display_name }} · {{ v.plate or "(rekisteritunnus puuttuu)" }} <span class="muted small">({{ v.id }})</span></h1>
+<nav class="tabs" style="margin-bottom:12px">
+  <a href="{{ base }}/v/{{ v.id }}" class="{{ 'active' if page == 'trips' else '' }}">Matkat</a>
+  <a href="{{ base }}/v/{{ v.id }}/costs" class="{{ 'active' if page == 'costs' else '' }}">Kulut</a>
+  <a href="{{ base }}/v/{{ v.id }}/reports" class="{{ 'active' if page == 'reports' else '' }}">Raportit ja lukitus</a>
+  <a href="{{ base }}/v/{{ v.id }}/new" class="{{ 'active' if page == 'new' else '' }}">Lisää ajo käsin</a>
+</nav>

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}CarData Logbook{% endblock %}</title>
+  <link rel="stylesheet" href="{{ base }}/static/style.css?v={{ APP_VERSION }}">
+</head>
+<body data-vehicle="{{ v.id if v else '' }}">
+<header class="top">
+  <a class="brand" href="{{ base }}/">CarData Logbook</a>
+  <nav class="tabs">
+    {% for car in vehicles %}
+      {% if car.id in app.services %}
+        <a href="{{ base }}/v/{{ car.id }}" class="{{ 'active' if v and v.id == car.id else '' }}">{{ car.id }}{% if car.plate %} · {{ car.plate }}{% endif %}</a>
+      {% endif %}
+    {% endfor %}
+    <a href="{{ base }}/vehicles" class="{{ 'active' if request.url.path.endswith('/vehicles') else '' }}">Autot</a>
+    <a href="{{ base }}/settings" class="{{ 'active' if request.url.path.endswith('/settings') else '' }}">Asetukset</a>
+  </nav>
+  {% if not app.ha_connected %}<span class="badge warn">Ei yhteyttä Home Assistantiin</span>{% endif %}
+  {% if not app.stream_ok %}<span class="badge warn">CarData-yhteys poikki ({{ app.stream_state }})</span>{% endif %}
+</header>
+<main>
+  {% if msg %}<div class="flash ok">{{ msg }}</div>{% endif %}
+  {% if err %}<div class="flash err">{{ err }}</div>{% endif %}
+  <div id="live-msg" class="flash err" style="display:none"></div>
+  {% block content %}{% endblock %}
+</main>
+<footer>CarData Logbook v{{ APP_VERSION }} · data luetaan Home Assistantista, ei omaa yhteyttä autovalmistajalle</footer>
+<script src="{{ base }}/static/app.js?v={{ APP_VERSION }}"></script>
+</body>
+</html>

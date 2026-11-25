@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}{{ v.id }} – kulut{% endblock %}
+{% block content %}
+{% set page = 'costs' %}
+{% include "_vehicle_header.html" %}
+<div class="card">
+  <form class="toolbar" method="get" action="{{ base }}/v/{{ v.id }}/costs">
+    <label class="f">Vuosi
+      <select name="year">{% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year else '' }}>{{ y }}</option>{% endfor %}</select>
+    </label>
+    <label class="f">Kuukausi
+      <select name="month">
+        <option value="0" {{ 'selected' if not month else '' }}>Koko vuosi</option>
+        {% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m == month else '' }}>{{ MONTH_NAMES[m] }}</option>{% endfor %}
+      </select>
+    </label>
+    <button type="submit">Näytä</button>
+    {% if snapshot.plugged %}<span class="muted">Kytketty latauteen {{ snapshot.plug_start|dt }}{% if snapshot.plug_kwh is not none %}, laturi {{ qty(snapshot.plug_kwh) }} kWh tähän mennessä{% endif %}</span>{% endif %}
+  </form>
+  <div class="summary">
+    <div><span class="muted">Ladattu</span><b>{{ qty(c.charged_kwh) }} kWh</b>
+      {% if c.charged_estimated_kwh %}<span class="small muted">josta arvio {{ qty(c.charged_estimated_kwh) }} kWh</span>{% endif %}</div>
+    <div><span class="muted">Latauksia</span><b>{{ c.charge_count }}</b></div>
+    {% if c.has_fuel %}
+    <div><span class="muted">Tankattu</span><b>{{ qty(c.refuelled_l, 1) }} l</b></div>
+    <div><span class="muted">Tankkauksia</span><b>{{ c.refuel_count }}</b></div>
+    <div><span class="muted">Polttoainetta kulunut</span><b>{{ qty(c.fuel_used_l, 1) if c.fuel_used_l is not none else '–' }} l</b>
+      {% if c.fuel_per_100km is not none %}<span class="small muted">{{ qty(c.fuel_per_100km, 1) }} l/100 km</span>{% endif %}</div>
+    {% endif %}
+  </div>
+  <p class="muted small">Vain määrät. Yksikköhinta on vapaaehtoinen, ja sen voi lisätä tähän tai Excelin Kulut-välilehdelle. Euromääriä ei lasketa.</p>
+</div>
+
+<div class="table-wrap card" style="padding:0">
+<table class="trips">
+  <thead><tr><th>Päivä ja aika</th><th>Tapahtuma</th><th>Paikka</th><th>Määrä</th><th>Varaus / tankki</th><th>Lähde</th><th>Yksikköhinta</th><th>Kommentti</th><th></th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr class="{{ 'locked' if r.locked else '' }}">
+      <td style="white-space:nowrap">{{ r.date }}<br><span class="muted">{{ r.start }}{% if r.end and r.end != r.start %}–{{ r.end }}{% endif %}</span>
+        {% if r.locked %}<br><span class="chip">lukittu</span>{% endif %}</td>
+      <td>{{ r.kind_label }}</td>
+      <td class="route">{{ r.place or "?" }}</td>
+      <td class="num"><b>{{ r.quantity_text }} {{ r.unit }}</b>{% for m in r.markers %}<br><span class="chip">{{ m }}</span>{% endfor %}</td>
+      <td>{{ r.level }}</td>
+      <td class="small">{{ r.source_label }}</td>
+      <td style="white-space:nowrap"><input class="inline" style="width:6em" inputmode="decimal" data-field="unit_price" data-url="{{ base }}/v/{{ v.id }}/costs/{{ r.id }}/field" value="{{ r.unit_price_text }}" placeholder="ei pakollinen"> <span class="small muted">{{ r.unit_price_label }}</span></td>
+      <td><input class="inline" data-field="comment" data-url="{{ base }}/v/{{ v.id }}/costs/{{ r.id }}/field" value="{{ r.comment }}"></td>
+      <td>
+        {% if not r.locked %}
+        <details><summary class="small">korjaa</summary>
+          <form method="post" action="{{ base }}/v/{{ v.id }}/costs/{{ r.id }}/correct" class="toolbar" style="flex-direction:column;align-items:stretch;min-width:220px">
+            <label class="f">Määrä ({{ r.unit }}) <input name="quantity" inputmode="decimal" value="{{ r.quantity_text }}"></label>
+            <label class="f"><span><input type="checkbox" name="voided" value="1"> Poista laskennasta (virheellinen tunnistus)</span></label>
+            <label class="f">Perustelu <input name="reason" required placeholder="esim. latauskuitti"></label>
+            <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ month }}">
+            <button class="small">Tallenna</button>
+          </form>
+        </details>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="9" class="muted">Ei latauksia{% if c.has_fuel %} tai tankkauksia{% endif %} valitulla jaksolla.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="card" style="max-width:720px">
+  <details><summary><b>Lisää lataus{% if c.has_fuel %} tai tankkaus{% endif %} käsin</b></summary>
+  <p class="muted small">Esimerkiksi julkinen lataus, joka ei näkynyt autolta. Käsin kirjattu kulu merkitään raporttiin ja muutoslokiin.</p>
+  <form method="post" action="{{ base }}/v/{{ v.id }}/costs/new" class="toolbar" style="flex-direction:column;align-items:stretch">
+    <label class="f">Tapahtuma
+      <select name="kind"><option value="charge">Lataus (kWh)</option>{% if c.has_fuel %}<option value="refuel">Tankkaus (l)</option>{% endif %}</select>
+    </label>
+    <label class="f">Aika <input type="datetime-local" name="start_time" required></label>
+    <label class="f">Määrä (kWh tai l) <input name="quantity" inputmode="decimal" required></label>
+    <label class="f">Paikka <input name="address"></label>
+    <label class="f">Yksikköhinta (vapaaehtoinen) <input name="unit_price" inputmode="decimal"></label>
+    <label class="f">Kommentti <input name="comment"></label>
+    <label class="f">Miksi kirjataan käsin? <input name="reason" placeholder="esim. julkinen laturi, kuitti"></label>
+    <button type="submit">Tallenna</button>
+  </form>
+  </details>
+</div>
+{% endblock %}

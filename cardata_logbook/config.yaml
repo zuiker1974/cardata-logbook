@@ -1,0 +1,84 @@
+name: CarData Logbook
+version: "1.0.0"
+slug: cardata_logbook
+description: Automaattinen ajopäiväkirja Home Assistantin BMW CarData -integraation datasta
+url: https://github.com/zuiker1974/cardata-logbook
+arch:
+  - aarch64
+  - amd64
+init: false
+ingress: true
+panel_icon: mdi:car-clock
+panel_title: Ajopäiväkirja
+homeassistant_api: true
+hassio_api: true
+services:
+  - mqtt:want
+map:
+  - share:rw
+options:
+  vehicles: []
+  export_dir: /share/ajopaivakirja
+  month_folder_format: "%m"
+  trip_start_distance_m: 100
+  trip_end_timeout_s: 600
+  ghost_motion_max_s: 90
+  home_zones:
+    - zone.home
+  stream_status_entity: ""
+  backfill_max_hours: 24
+  ha_mqtt_enabled: true
+  report_xlsx: true
+  report_csv: false
+  xlsx_import_poll_s: 60
+  odometer_gap_tolerance_km: 1
+  auto_lock_after_days: 15
+  commute_counts_as_private: true
+  archive_filtered:
+    - business
+  nominatim_user_agent: cardata-logbook
+  refuel_min_l: 3
+  log_level: info
+schema:
+  vehicles:
+    - id: match(^[a-z0-9_]{2,16}$)
+      plate: str
+      make: str
+      model: str
+      powertrain: list(PHEV|BEV|ICE)
+      vin: match(^$|^[A-HJ-NPR-Z0-9]{17}$)
+      driver: str
+      enabled: bool
+      charging_pause_enabled: bool
+      charging_pause_timeout_s: int(0,86400)
+      entity_location: str?
+      entity_odometer: str?
+      entity_motion: str?
+      entity_soc: str?
+      entity_charging_state: str?
+      entity_charging_method: str?
+      entity_hv_system_state: str?
+      entity_fuel_level: str?
+      entity_charger_energy: str?
+      charge_kwh_per_pct: float(0,5)?
+  export_dir: str
+  month_folder_format: str
+  trip_start_distance_m: int(10,5000)
+  trip_end_timeout_s: int(60,7200)
+  ghost_motion_max_s: int(0,600)
+  home_zones:
+    - str
+  stream_status_entity: str?
+  backfill_max_hours: int(0,240)
+  ha_mqtt_enabled: bool
+  report_xlsx: bool
+  report_csv: bool
+  xlsx_import_poll_s: int(10,3600)
+  odometer_gap_tolerance_km: float(0,50)
+  auto_lock_after_days: int(0,365)
+  commute_counts_as_private: bool
+  archive_filtered:
+    - list(business|private|commute)
+  nominatim_user_agent: str
+  refuel_min_l: float(1,30)?
+  log_level: list(debug|info|warning|error)

@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}{{ v.id }} – lisää ajo{% endblock %}
+{% block content %}
+{% set page = 'new' %}
+{% include "_vehicle_header.html" %}
+<div class="card" style="max-width:720px">
+  <h2>Lisää ajo käsin autolle {{ v.id }} ({{ v.plate }})</h2>
+  {% if prev and next %}<p class="flash ok small">Ajo täyttää mittariaukon matkojen {{ prev }} ja {{ next }} välissä. Arvot on esitäytetty.</p>{% endif %}
+  <p class="muted small">Käsin lisätty ajo merkitään raporttiin ("käsin lisätty") ja kirjataan muutoslokiin.</p>
+  <form method="post" action="{{ base }}/v/{{ v.id }}/new" class="toolbar" style="flex-direction:column;align-items:stretch">
+    <input type="hidden" name="prev" value="{{ prev or '' }}"><input type="hidden" name="next" value="{{ next or '' }}">
+    <label class="f">Alkuaika <input type="datetime-local" name="start_time" required value="{{ prefill.start_time or '' }}"></label>
+    <label class="f">Loppuaika <input type="datetime-local" name="end_time" required value="{{ prefill.end_time or '' }}"></label>
+    <label class="f">Lähtöpaikka <input name="start_address" value="{{ prefill.start_address or '' }}"></label>
+    <label class="f">Määränpää <input name="end_address" value="{{ prefill.end_address or '' }}"></label>
+    <label class="f">Mittari alussa (km) <input name="start_odometer" inputmode="decimal" required value="{{ prefill.start_odometer|km if prefill.start_odometer is not none else '' }}"></label>
+    <label class="f">Mittari lopussa (km) <input name="end_odometer" inputmode="decimal" required value="{{ prefill.end_odometer|km if prefill.end_odometer is not none else '' }}"></label>
+    <label class="f">Ajotyyppi
+      <select name="trip_type">{% for k, label in TYPE_LABELS.items() %}<option value="{{ k }}" {{ 'selected' if k == 'private' else '' }}>{{ label }}</option>{% endfor %}</select>
+    </label>
+    <label class="f">Tarkoitus (pakollinen työajolle) <input name="purpose"></label>
+    <label class="f">Kommentti <input name="comment"></label>
+    <label class="f">Miksi ajo lisätään käsin? <input name="reason" placeholder="esim. CarData-katkos, ajo puuttui"></label>
+    <button type="submit">Tallenna ajo</button>
+  </form>
+</div>
+{% endblock %}

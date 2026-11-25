@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core
+      - run: pip install -r cardata_logbook/requirements.txt pytest httpx
+      - run: python tools/privacy_check.py
+      - run: python -m pytest -q tests
+        env:
+          TZ: Europe/Helsinki
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: frenck/action-addon-linter@v2
+        with:
+          path: "./cardata_logbook"
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testirakennus (amd64, ei julkaisua)
+        uses: home-assistant/builder@master
+        with:
+          args: |
+            --test \
+            --amd64 \
+            --target /data/cardata_logbook \
+            --image "cardata-logbook-{arch}" \
+            --docker-hub ghcr.io/zuiker1974

@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Asetukset{% endblock %}
+{% block content %}
+<h1>Asetukset ja tila</h1>
+<div class="card">
+  <p>Autot (rekisteritunnus, malli, käyttövoima, kuljettaja, entiteetit) hallitaan <a href="{{ base }}/vehicles">Autot-sivulla</a>.
+  Yleiset asetukset ovat lisäosan asetussivulla: <b>Asetukset → Lisäosat → CarData Logbook → Määritykset</b>.</p>
+  <p class="small">Home Assistant: {% if app.ha_connected %}✓ yhdistetty{% else %}✗ ei yhteyttä{% if app.ha_error %} ({{ app.ha_error }}){% endif %}{% endif %} ·
+  CarData-yhteys: {{ app.stream_state or 'ei tietoa' }} ·
+  MQTT-sensorit: {{ 'käytössä' if app.mqtt else 'ei käytössä' }} · Raporttikansio: <code>{{ settings.export_dir }}</code></p>
+</div>
+<div class="card">
+  <h3 style="margin-top:0">Siirto toiseen asennukseen</h3>
+  <p class="small">Kun vaihdat lisäosan toisesta reposta asennettuun versioon, kirjoita ensin siirtopaketti. Uusi lisäosa tuo sen
+  ensimmäisellä käynnistyksellä (autot, matkat, kulut, lukitukset ja muutosloki). Pysäytä tämä lisäosa paketin jälkeen.</p>
+  <form method="post" action="{{ base }}/transfer/export"><button class="secondary">Kirjoita siirtopaketti</button>
+  <span class="small muted">→ <code>{{ settings.export_dir }}/.siirto/</code></span></form>
+</div>
+{% for c in cars %}
+<div class="card">
+  <h2>{{ c.v.display_name }} · {{ c.v.plate or "rekisteritunnus puuttuu" }} ({{ c.v.id }})</h2>
+  {% for e in c.errors %}<div class="flash err small">{{ e }}</div>{% endfor %}
+  {% if not c.v.enabled %}<p class="muted">Auto ei ole käytössä.</p>{% endif %}
+  <div class="grid2">
+    <div>
+      <h3>Autotiedot (vain luku)</h3>
+      <table class="simple small">
+        <tr><th>Rekisterinumero</th><td>{{ c.v.plate }}</td></tr>
+        <tr><th>Merkki ja malli</th><td>{{ c.v.display_name }}</td></tr>
+        <tr><th>Käyttövoima</th><td>{{ c.v.powertrain_label }}</td></tr>
+        <tr><th>VIN</th><td>{{ c.v.vin }}</td></tr>
+        <tr><th>Kuljettaja</th><td>{{ c.v.driver }}</td></tr>
+        <tr><th>Lataustauko</th><td>{{ 'käytössä' if c.v.charging_pause_enabled else 'pois' }}, {{ (c.v.charging_pause_timeout_s // 60) }} min</td></tr>
+        <tr><th>Kansio</th><td><code>{{ settings.export_dir }}/{{ c.v.folder_name }}</code></td></tr>
+      </table>
+      {% if c.info_history|length > 1 %}
+      <details><summary class="small">Autotietojen historia</summary>
+        <table class="simple small">{% for i in c.info_history %}<tr><td>{{ i.valid_from|dt }}</td><td>{{ i.plate }}</td><td>{{ i.driver }}</td><td>{{ i.vin }}</td></tr>{% endfor %}</table>
+      </details>
+      {% endif %}
+    </div>
+    <div>
+      <h3>Entiteettitarkistus</h3>
+      <table class="simple small">
+        <tr><th>Rooli</th><th>Entiteetti</th><th>Tila</th></tr>
+        {% for role, eid in c.v.entities.items() %}
+          {% set st = c.entities.get(role) %}
+          <tr><td>{{ ROLE_LABELS.get(role, role) }}{% if c.v.entity_source(role) %} <span class="muted">({{ SOURCE_NAMES[c.v.entity_source(role)] }})</span>{% endif %}</td><td><code>{{ eid or '–' }}</code></td>
+            <td>{% if not eid %}<span class="muted">ei kartoitettu</span>{% elif st and st.exists %}✓ {{ st.state }}{% elif st %}<b style="color:var(--err)">✗ puuttuu</b>{% else %}<span class="muted">ei tarkistettu</span>{% endif %}</td></tr>
+        {% endfor %}
+      </table>
+      {% if c.snapshot %}
+      <p class="small muted">Tilakone: {{ c.snapshot.status }} · viimeisin tapahtuma {{ c.snapshot.last_ts|dt }} · mittari {{ c.snapshot.odometer|km }} ·
+        ohitettuja haamuliikkeitä {{ c.snapshot.ignored_ghosts }}, toistuvia päivityksiä {{ c.snapshot.ignored_duplicates }}</p>
+      {% endif %}
+    </div>
+  </div>
+  {% if c.svc %}
+  <div class="grid2">
+    <div>
+      <h3>Viimeisimmät tiedostot (/share)</h3>
+      <p class="small muted">Raportit kirjoitettu viimeksi: {{ c.svc.last_export|dt if c.svc.last_export else 'ei vielä' }}</p>
+      <table class="simple small">{% for f in c.files %}<tr><td><code>{{ f.path }}</code></td><td>{{ (f.size / 1024)|round(1) }} kt</td></tr>{% else %}<tr><td class="muted">Ei tiedostoja vielä.</td></tr>{% endfor %}</table>
+    </div>
+    <div>
+      <h3>Excel-tuonnit</h3>
+      <p class="small">Odottaa tuonti-kansiossa: {{ c.pending|join(', ') or 'ei mitään' }}</p>
+      <p class="small">Viimeisin: {{ c.svc.last_import or 'ei tuonteja' }}</p>
+      {% for w in c.svc.warnings %}<div class="flash err small">{{ w }}</div>{% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

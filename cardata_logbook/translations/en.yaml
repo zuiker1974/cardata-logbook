@@ -1,0 +1,16 @@
+configuration:
+  vehicles:
+    name: Vehicles (legacy)
+    description: Only for upgrades from 0.2. Vehicles are managed on the logbook's Vehicles page.
+  export_dir:
+    name: Export folder
+    description: Folder for reports, archive and backups (uploaded to Drive by Rclone Backup).
+  trip_end_timeout_s:
+    name: Trip end timeout (s)
+    description: How long the car must be stationary before the trip ends.
+  ghost_motion_max_s:
+    name: Ghost motion max duration (s)
+    description: Short motion "on" periods without movement are ignored.
+  refuel_min_l:
+    name: Minimum refuel (l)
+    description: Tank level increase that is recorded as a refuel.

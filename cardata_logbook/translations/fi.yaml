@@ -1,0 +1,64 @@
+configuration:
+  vehicles:
+    name: Autot (vanha)
+    description: >-
+      Vain versiosta 0.2 päivittäville. Autot hallitaan ajopäiväkirjan Autot-sivulla.
+  export_dir:
+    name: Raporttikansio
+    description: Kansio, johon raportit, arkisto ja varmuuskopiot kirjoitetaan (Rclone Backup vie sen Driveen).
+  month_folder_format:
+    name: Kuukausikansion muoto
+    description: Kuukausikansion nimi strftime-muodossa, oletus "%m" (esim. 11).
+  trip_start_distance_m:
+    name: Liikkeellelähdön etäisyys (m)
+    description: Sijainnin siirtymä, jonka jälkeen auto katsotaan liikkuneeksi.
+  trip_end_timeout_s:
+    name: Matkan päättymisen viive (s)
+    description: Kuinka kauan auton on oltava paikallaan, ennen kuin matka päätetään.
+  ghost_motion_max_s:
+    name: Haamuliikkeen enimmäiskesto (s)
+    description: >-
+      Lyhyet liiketilan "on"-jaksot, joiden aikana auto ei liiku eikä mittarilukema kasva,
+      ohitetaan (esim. BMW 530e lähettää pysäköinnin jälkeen usein haamuliikkeen).
+  home_zones:
+    name: Kotivyöhykkeet
+    description: Vyöhykkeet, joilla lataus ei ole lataustauko (matka päättyy tavallisesti).
+  stream_status_entity:
+    name: CarData-yhteyden tilaentiteetti
+    description: Kun tämä ei ole "connected", matkaa ei päätetä aikakatkaisulla.
+  backfill_max_hours:
+    name: Historiapaikkauksen enimmäispituus (h)
+    description: Kuinka pitkältä ajalta puuttuva data haetaan HA:n historiasta yhteyskatkon jälkeen.
+  ha_mqtt_enabled:
+    name: HA-sensorit MQTT:llä
+    description: Julkaise autokohtaiset bmw_logbook_-sensorit MQTT Discoveryllä.
+  report_xlsx:
+    name: Excel-työkirja
+    description: Kirjoita Excel-vuosityökirja raporttikansioon.
+  report_csv:
+    name: CSV
+    description: Kirjoita myös CSV-tiedosto raporttikansioon.
+  xlsx_import_poll_s:
+    name: Tuonti-kansion tarkistusväli (s)
+    description: Kuinka usein auton tuonti-kansio tarkistetaan uusien Excelien varalta.
+  odometer_gap_tolerance_km:
+    name: Mittariaukon toleranssi (km)
+    description: Peräkkäisten matkojen mittarilukemien sallittu ero.
+  auto_lock_after_days:
+    name: Automaattinen lukitus (päivää)
+    description: Kuukausi lukitaan automaattisesti näin monen päivän päästä kuun päättymisestä, jos tarkistukset ovat kunnossa. 0 = vain käsin.
+  commute_counts_as_private:
+    name: Työmatkat yksityisajoihin
+    description: Sisällytä työmatkat "Vain yksityisajot" -tulosteisiin oletuksena.
+  archive_filtered:
+    name: Arkistoitavat osaraportit
+    description: Lukittaessa arkistoitavat ajotyyppikohtaiset osaraportit (business = työajot).
+  nominatim_user_agent:
+    name: Nominatim User-Agent
+    description: Tunniste OpenStreetMapin osoitehakuun.
+  refuel_min_l:
+    name: Tankkauksen vähimmäismäärä (l)
+    description: Tankin litramäärän nousu, joka kirjataan tankkaukseksi (pienemmät heilahdukset ohitetaan).
+  log_level:
+    name: Lokitaso
+    description: Lokin yksityiskohtaisuus.

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}Autot{% endblock %}
+{% block content %}
+<h1>Autot</h1>
+{% if app.restart_needed %}
+<div class="flash warn">
+  Muutokset tallennettu. Ne tulevat voimaan, kun lisäosa käynnistetään uudelleen.
+  <form method="post" action="{{ base }}/restart" style="display:inline"><button class="small">Käynnistä uudelleen nyt</button></form>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-top:0">Löydetyt autot</h2>
+  <p class="small muted">Autot luetaan Home Assistantin CarData-integraatiosta VIN:n perusteella. Lisäosa ei avaa omaa yhteyttä BMW:lle.
+  {% if not app.ha_connected %}Ei yhteyttä Home Assistantiin, joten autoja ei voitu hakea.{% elif app.discovery_error %}Entiteettirekisteriä ei voitu lukea: {{ app.discovery_error }}{% endif %}</p>
+  <table class="simple small">
+    <tr><th>Auto</th><th>VIN</th><th>Käyttövoima</th><th>Löydetyt roolit</th><th></th></tr>
+    {% for d in discovered %}
+    <tr>
+      <td>{{ d.d.display_name }}</td>
+      <td><code>{{ d.d.vin }}</code></td>
+      <td>{{ d.d.powertrain or '?' }}{% if d.d.drive_train and d.d.drive_train != d.d.powertrain %} <span class="muted">({{ d.d.drive_train }})</span>{% endif %}</td>
+      <td>{{ d.d.entities|length }} / {{ ROLES|length - 1 }}</td>
+      <td>{% if d.configured %}<span class="muted">lisätty ({{ d.configured }})</span>{% else %}<a class="btn small" href="{{ base }}/vehicles?add={{ d.d.vin }}#edit-new">Lisää</a>{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">CarData-autoja ei löytynyt.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Kotilaturi</h2>
+  <p class="small muted">Kotilaturin energiamittari (Wh tai kWh, istuntokohtainen tai kasvava). Jos sama laturi on usealla autolla, mitattu energia kirjataan autolle, jonka varaus nousi kytkennän aikana.</p>
+  <form method="post" action="{{ base }}/vehicles/charger" class="toolbar">
+    <label class="f">Energia-entiteetti
+      <input name="home_charger_entity" value="{{ store.home_charger_entity }}" list="energy-entities" size="40" placeholder="sensor.laturi_energia">
+    </label>
+    <button>Tallenna</button>
+  </form>
+</div>
+
+{% for f in forms %}
+<div class="card" id="edit-{{ f.anchor }}">
+  <h2 style="margin-top:0">{% if f.new %}Uusi auto{% else %}{{ f.v.make }} {{ f.v.model }} · {{ f.v.plate or 'rekisteritunnus puuttuu' }} ({{ f.v.id }}){% endif %}</h2>
+  {% for e in f.errors %}<div class="flash err small">{{ e }}</div>{% endfor %}
+  <form method="post" action="{{ base }}/vehicles/save">
+    <input type="hidden" name="orig_id" value="{{ '' if f.new else f.v.id }}">
+    <div class="toolbar">
+      <label class="f">Tunniste{% if not f.new %} (ei muutettavissa){% endif %}
+        <input name="id" value="{{ f.v.id }}" {% if not f.new %}readonly{% endif %} required pattern="[a-z0-9_]{2,16}" size="10"></label>
+      <label class="f">Rekisteritunnus <input name="plate" value="{{ f.v.plate }}" size="10"></label>
+      <label class="f">Merkki <input name="make" value="{{ f.v.make }}" size="10"></label>
+      <label class="f">Malli <input name="model" value="{{ f.v.model }}" size="22"></label>
+      <label class="f">Kuljettaja <input name="driver" value="{{ f.v.driver }}" size="16"></label>
+      <label class="f">VIN <input name="vin" value="{{ f.v.vin }}" size="20" pattern="[A-HJ-NPR-Z0-9]{17}|"></label>
+    </div>
+    <div class="toolbar">
+      <label class="f">Käyttövoima
+        <select name="powertrain">{% for p in POWERTRAINS %}<option value="{{ p }}" {{ 'selected' if f.v.powertrain == p }}>{{ POWERTRAIN_LABELS[p] }}</option>{% endfor %}</select></label>
+      <label class="f">Polttoaine
+        <select name="fuel_type">{% for k in FUEL_TYPES %}<option value="{{ k }}" {{ 'selected' if f.v.fuel_type == k }}>{{ FUEL_TYPE_LABELS[k] or '–' }}</option>{% endfor %}</select></label>
+      <label class="f">Lataustauko (min, 0 = pois)
+        <input name="charging_pause_min" type="number" min="0" max="1440" value="{{ (f.v.charging_pause_timeout_s // 60) if f.v.charging_pause_enabled else 0 }}" size="5"></label>
+      <label class="f">Arvio kWh / varaus-% (muualla ladattaessa)
+        <input name="charge_kwh_per_pct" type="number" step="0.01" min="0" max="5" value="{{ f.v.charge_kwh_per_pct }}" size="5"></label>
+      <label class="f"><span><input type="checkbox" name="use_home_charger" value="1" {{ 'checked' if f.v.use_home_charger }}> Ladataan kotilaturilla</span></label>
+      <label class="f"><span><input type="checkbox" name="auto_discover" value="1" {{ 'checked' if f.v.auto_discover }}> Etsi entiteetit automaattisesti (VIN)</span></label>
+      <label class="f"><span><input type="checkbox" name="enabled" value="1" {{ 'checked' if f.v.enabled }}> Käytössä</span></label>
+    </div>
+    <details {% if f.new or f.errors %}open{% endif %}><summary class="small">Entiteetit</summary>
+      <p class="small muted">Jätä kenttä tyhjäksi, niin entiteetti haetaan automaattisesti. Käsin syötetty entiteetti ohittaa automaattisen.</p>
+      <table class="simple small">
+        <tr><th>Rooli</th><th>Käsin</th><th>Käytössä nyt</th></tr>
+        {% for role in ROLES if role != 'charger_energy' %}
+        <tr>
+          <td>{{ ROLE_LABELS[role] }}</td>
+          <td><input name="entity_{{ role }}" value="{{ f.v.overrides.get(role, '') }}" size="44" placeholder="{{ f.v.discovered.get(role, '') or f.hint.get(role, '') }}"></td>
+          <td>{% set eid = f.v.entity(role) %}{% if not f.v.role_allowed(role) %}<span class="muted">ei tällä käyttövoimalla</span>{% elif eid %}<code>{{ eid }}</code> <span class="muted">({{ SOURCE_NAMES[f.v.entity_source(role)] }})</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        <tr>
+          <td>{{ ROLE_LABELS['charger_energy'] }}</td>
+          <td><input name="entity_charger_energy" value="{{ f.v.overrides.get('charger_energy', '') }}" size="44" placeholder="kotilaturi, jos valittu"></td>
+          <td>{% set eid = f.v.entity('charger_energy') %}{% if eid %}<code>{{ eid }}</code> <span class="muted">({{ SOURCE_NAMES[f.v.entity_source('charger_energy')] }})</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        </tr>
+      </table>
+    </details>
+    <p><button>{% if f.new %}Lisää auto{% else %}Tallenna{% endif %}</button></p>
+  </form>
+</div>
+{% endfor %}
+
+<datalist id="energy-entities">{% for e in energy_entities %}<option value="{{ e }}">{% endfor %}</datalist>
+{% endblock %}

@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ v.id }} – raportit{% endblock %}
+{% block content %}
+{% set page = 'reports' %}
+{% include "_vehicle_header.html" %}
+<div class="grid2">
+<div class="card">
+  <h2>Lataa raportti ({{ v.id }} · {{ v.plate }})</h2>
+  <form method="get" action="{{ base }}/v/{{ v.id }}/download" class="toolbar" style="flex-direction:column;align-items:stretch">
+    <label class="f">Raportti
+      <select name="kind">
+        <option value="month_pdf">PDF, kuukausiraportti</option>
+        <option value="year_pdf">PDF, vuosiraportti (sis. muutoshistorian)</option>
+        <option value="xlsx">Excel, vuosityökirja (kommenttisarake)</option>
+        <option value="csv">CSV</option>
+      </select>
+    </label>
+    <div class="toolbar">
+      <label class="f">Vuosi <select name="year">{% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year else '' }}>{{ y }}</option>{% endfor %}</select></label>
+      <label class="f">Kuukausi (PDF-kuukausiraportti)
+        <select name="month">{% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m == default_month else '' }}>{{ MONTH_NAMES[m] }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <label class="f">Ajot
+      <select name="filter">
+        <option value="all">Kaikki ajot</option>
+        <option value="business">Vain työajot</option>
+        <option value="private">Vain yksityisajot</option>
+        <option value="commute">Vain työmatkat</option>
+      </select>
+    </label>
+    <input type="hidden" name="include_commute" value="0">
+    <label><input type="checkbox" name="include_commute" value="1" {{ 'checked' if commute_default else '' }}> Sisällytä työmatkat yksityisajoihin (verotuksessa työmatkat ovat yksityisajoa)</label>
+    <button type="submit">Lataa</button>
+    <p class="muted small">Raportti tehdään aina tietokannan nykytilasta. Lukitun kuukauden PDF ladataan muuttumattomasta arkistotiedostosta.</p>
+  </form>
+</div>
+<div class="card">
+  <h2>Tuo kommentoitu Excel</h2>
+  <p class="muted small">Tuonti yhdistää rivit Matka-ID:n perusteella. Vain Kommentti-, Ajotyyppi- ja Tarkoitus-sarakkeet tuodaan; mittaustiedot ohitetaan aina. Toisen auton Exceliä ei voi tuoda.</p>
+  <form method="post" action="{{ base }}/v/{{ v.id }}/import" enctype="multipart/form-data" class="toolbar">
+    <input type="file" name="file" accept=".xlsx" required>
+    <button type="submit">Tuo Excel</button>
+  </form>
+  <p class="muted small">Driven kautta: tallenna tiedosto Drivessa kansioon <code>Ajopaivakirja/{{ svc.exporter.vehicle.folder_name }}/tuonti/</code>. Tiedosto tuodaan, kun Rclone Backup on hakenut sen.</p>
+  {% if conflicts %}
+  <h2>Ratkaise ristiriidat</h2>
+  <table class="simple small">
+    <tr><th>Matka</th><th>Kenttä</th><th>Selaimessa</th><th>Excelissä</th><th></th></tr>
+    {% for c in conflicts %}
+    <tr><td><a href="{{ base }}/v/{{ v.id }}/trips/{{ c.trip_id }}">{{ c.trip_id }}</a></td><td>{{ FIELD_LABELS.get(c.field, c.field) }}</td>
+      <td>{{ TYPE_LABELS.get(c.ui_value, c.ui_value) }}</td><td>{{ TYPE_LABELS.get(c.excel_value, c.excel_value) }}</td>
+      <td style="white-space:nowrap">
+        <form method="post" action="{{ base }}/v/{{ v.id }}/conflicts/{{ c.id }}" style="display:inline"><input type="hidden" name="choice" value="ui"><button class="small secondary">Pidä selaimen</button></form>
+        <form method="post" action="{{ base }}/v/{{ v.id }}/conflicts/{{ c.id }}" style="display:inline"><input type="hidden" name="choice" value="excel"><button class="small">Käytä Excelin</button></form>
+      </td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+  <h2>Viimeisimmät tuonnit</h2>
+  <table class="simple small">
+    <tr><th>Aika</th><th>Lähde</th><th>Tiedosto</th><th>Tulos</th></tr>
+    {% for i in imports %}
+    <tr><td>{{ i.imported_at|dt }}</td><td>{{ SOURCE_LABELS.get(i.source, i.source) }}</td><td>{{ i.filename }}</td>
+      <td>{% if i.status == 'rejected' %}<b>hylätty</b>: {{ i.summary.error }}{% else %}{{ i.changed_rows }} matkaa päivitetty
+        {% if i.summary.locked_changes %}<br>Excelissä muutettu lukittua tietoa, ei tuotu ({{ i.summary.locked_changes|length }}){% endif %}
+        {% if i.summary.unknown_rows %}<br>Tuntemattomia rivejä: {{ i.summary.unknown_rows|length }}{% endif %}
+        {% if i.summary.conflicts %}<br>Ristiriitoja: {{ i.summary.conflicts|length }}{% endif %}
+        {% if i.summary.skipped %}<br>Ohitettu: {{ i.summary.skipped|join('; ') }}{% endif %}{% endif %}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">Ei tuonteja.</td></tr>{% endfor %}
+  </table>
+</div>
+</div>
+
+<div class="card">
+  <h2>Jaksot ja lukitus {{ year }}</h2>
+  <form method="get" action="{{ base }}/v/{{ v.id }}/reports" class="toolbar">
+    <select name="year" onchange="this.form.submit()">{% for y in years %}<option value="{{ y }}" {{ 'selected' if y == year else '' }}>{{ y }}</option>{% endfor %}</select>
+  </form>
+  <p class="muted small">Lukitus tarkistaa mittarijatkuvuuden ja työajojen tarkoitukset, tuo odottavat Excelit ja arkistoi kuukauden PDF:n SHA-256-tiivisteineen. Lukitun jakson matkoja ei voi muuttaa (jälkikommentit sallitaan).
+  {% if svc.settings.auto_lock_after_days %} Automaattinen lukitus {{ svc.settings.auto_lock_after_days }} päivää kuun päättymisen jälkeen, jos tarkistukset ovat kunnossa.{% endif %}</p>
+  <table class="simple">
+    <tr><th>Kuukausi</th><th>Matkoja</th><th>km</th><th>Tila</th><th>Tarkistukset</th><th></th></tr>
+    {% for m in months %}
+    <tr>
+      <td>{{ m.name }}</td><td>{{ m.count }}</td><td>{{ m.km|km }}</td>
+      <td>{% if m.period.status == 'locked' %}<b>Lukittu</b> {{ m.period.locked_at|dt }} (versio {{ m.period.version }})<br><code>SHA-256 {{ m.period.report_sha256 }}</code>{% else %}avoin{% endif %}</td>
+      <td class="small">{% for i in m.issues %}<div>⚠ {{ i.message }}</div>{% else %}{% if m.count %}✓ kunnossa{% endif %}{% endfor %}</td>
+      <td>
+        {% if m.period.status == 'locked' %}
+          <details><summary>Avaa lukitus</summary>
+            <form method="post" action="{{ base }}/v/{{ v.id }}/periods/unlock" class="toolbar">
+              <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.month }}">
+              <input name="reason" required placeholder="Perustelu (kirjataan muutoslokiin)">
+              <button class="small secondary">Avaa</button>
+            </form>
+          </details>
+        {% elif m.ended %}
+          <form method="post" action="{{ base }}/v/{{ v.id }}/periods/lock">
+            <input type="hidden" name="year" value="{{ year }}"><input type="hidden" name="month" value="{{ m.month }}">
+            <button class="small" {{ 'disabled' if m.issues else '' }}>Lukitse</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

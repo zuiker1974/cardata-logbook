@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ v.id }} – matka {{ trip.id }}{% endblock %}
+{% block content %}
+{% set page = '' %}
+{% include "_vehicle_header.html" %}
+<p><a href="{{ base }}/v/{{ v.id }}?year={{ year_month[0] }}&month={{ year_month[1] }}">← Takaisin listaan</a></p>
+<div class="grid2">
+<div class="card">
+  <h2>Matka {{ trip.id }} {% for m in row.markers %}<span class="chip">{{ m }}</span>{% endfor %}{% if locked %}<span class="chip">lukittu jakso</span>{% endif %}</h2>
+  <table class="simple">
+    <tr><th>Aika</th><td>{{ trip.start_time|dt }} – {{ trip.end_time|dt }}</td></tr>
+    <tr><th>Lähtöpaikka</th><td>{{ row.from }}</td></tr>
+    <tr><th>Määränpää</th><td>{{ row.to }}</td></tr>
+    <tr><th>Mittari</th><td>{{ trip.start_odometer|km }} – {{ trip.end_odometer|km }} ({{ trip.distance_km|km }} km)</td></tr>
+    {% if trip.gps_distance_km is not none %}<tr><th>GPS-pisteistä</th><td>{{ trip.gps_distance_km|km }} km <span class="muted small">(vain vertailuun, CarData-pisteet ~2 min välein)</span></td></tr>{% endif %}
+    {% if trip.start_soc is not none %}<tr><th>Akku</th><td>{{ trip.start_soc|km }} % → {{ trip.end_soc|km }} %</td></tr>{% endif %}
+    <tr><th>Ajotyyppi</th><td>{{ TYPE_LABELS[trip.trip_type] }}</td></tr>
+    <tr><th>Tarkoitus</th><td>{{ trip.purpose }}</td></tr>
+    <tr><th>Kommentti</th><td>{{ trip.comment }} {% if trip.comment_source %}<span class="muted small">({{ trip.comment_source }})</span>{% endif %}</td></tr>
+    <tr><th>Lähde</th><td>{{ trip.source }}</td></tr>
+  </table>
+  {% if stops %}
+  <h2>Lataustauot</h2>
+  <ul>{% for s in stops %}<li>{{ s.start_time|dt }} – {{ s.end_time|time }} {{ s.method or '' }} {{ s.address }} {% if s.soc_start is not none %}({{ s.soc_start|km }} % → {{ s.soc_end|km }} %){% endif %}</li>{% endfor %}</ul>
+  {% endif %}
+  {% if children %}
+  <h2>Yhdistetyt osamatkat</h2>
+  <ul>{% for c in children %}<li><a href="{{ base }}/v/{{ v.id }}/trips/{{ c.id }}">{{ c.id }}</a>: {{ c.start_time|dt }} – {{ c.end_time|time }}, {{ c.distance_km|km }} km</li>{% endfor %}</ul>
+  {% endif %}
+</div>
+<div class="card">
+  <h2>Korjaa autosta tullutta tietoa</h2>
+  {% if locked %}
+    <p class="muted">Jakso on lukittu. Tietoja ei voi muuttaa. Jälkikommentin voi lisätä matkalistassa.</p>
+  {% elif trip.merged_into_id %}
+    <p class="muted">Matka on yhdistetty matkaan {{ trip.merged_into_id }}. Korjaa yhdistettyä matkaa.</p>
+  {% else %}
+  <p class="muted small">Alkuperäinen mittaustieto säilyy aina, ja korjaus kirjataan muutoslokiin perusteluineen. Raportissa korjattu rivi merkitään.</p>
+  <form method="post" action="{{ base }}/v/{{ v.id }}/trips/{{ trip.id }}/correct" class="toolbar" style="flex-direction:column;align-items:stretch">
+    <label class="f">Kenttä
+      <select name="field">
+        <option value="start_address">Lähtöpaikka</option>
+        <option value="end_address">Määränpää</option>
+        <option value="start_odometer">Mittari alussa</option>
+        <option value="end_odometer">Mittari lopussa</option>
+        <option value="start_time">Alkuaika</option>
+        <option value="end_time">Loppuaika</option>
+      </select>
+    </label>
+    <label class="f">Uusi arvo <input name="value" placeholder="esim. Asiakkaantie 3, Tampere / 12345 / 17.11.2026 08:30"></label>
+    <label class="f">Perustelu (pakollinen) <input name="reason" required></label>
+    <button type="submit">Tallenna korjaus</button>
+  </form>
+  {% endif %}
+  {% if trip.corrected %}
+  <h2>Alkuperäiset arvot</h2>
+  <table class="simple small">
+    <tr><th>Aika</th><td>{{ trip.orig_start_time|dt }} – {{ trip.orig_end_time|dt }}</td></tr>
+    <tr><th>Paikat</th><td>{{ trip.orig_start_address }} → {{ trip.orig_end_address }}</td></tr>
+    <tr><th>Mittari</th><td>{{ trip.orig_start_odometer|km }} – {{ trip.orig_end_odometer|km }}</td></tr>
+  </table>
+  {% endif %}
+</div>
+</div>
+<div class="card">
+  <h2>Muutoshistoria</h2>
+  <table class="simple small">
+    <tr><th>Aika</th><th>Matka</th><th>Kenttä</th><th>Vanha</th><th>Uusi</th><th>Lähde</th><th>Perustelu</th></tr>
+    {% for h in history %}
+    <tr><td>{{ h.changed_at|dt }}</td><td>{{ h.trip_id }}</td><td>{{ FIELD_LABELS.get(h.field, h.field) }}</td><td>{{ h.old_value or '' }}</td><td>{{ h.new_value or '' }}</td><td>{{ SOURCE_LABELS.get(h.source, h.source) }}</td><td>{{ h.reason or '' }}</td></tr>
+    {% else %}<tr><td colspan="7" class="muted">Ei muutoksia. Tiedot ovat sellaisenaan autosta.</td></tr>{% endfor %}
+  </table>
+</div>
+{% endblock %}
