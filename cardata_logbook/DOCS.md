@@ -71,6 +71,10 @@ kirjaukseen.
 ja pysäytä vanha lisäosa. Uusi asennus tuo paketin (`/share/ajopaivakirja/.siirto/`) ensimmäisellä
 käynnistyksellä, jos sen omat tiedot ovat tyhjät.
 
+Jos siirtopakettia ei ole, uusi asennus palauttaa autot raporttikansion tietokantavarmuuskopioista
+(`<auto>/varmuuskopiot/`, kirjoitetaan jokaisen matkan jälkeen ja kerran päivässä). Matkat, kulut,
+lukitukset ja muutosloki palautuvat. Tarkista palautuksen jälkeen Autot-sivulta VIN ja kotilaturi.
+
 ### Muut asetukset
 
 | Asetus | Oletus | Merkitys |

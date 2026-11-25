@@ -7,4 +7,4 @@
 - Ajojen tunnistus CarDatan liiketilasta, sijainnista ja mittarilukemasta (haamuliikkeet ja myöhässä tuleva pysähdys huomioidaan), lataustauot kesken matkan.
 - Kululaskenta (kWh ja litrat), yhteinen kotilaturi usealle autolle.
 - Raportit PDF, Excel (kommenttien tuonti) ja CSV; mittarijatkuvuus, muutosloki, kuukausien lukitus SHA-256-arkistolla.
-- Siirtopaketti: tiedot voi siirtää toisesta asennuksesta (Asetukset → Kirjoita siirtopaketti).
+- Siirtopaketti: tiedot voi siirtää toisesta asennuksesta (Asetukset → Kirjoita siirtopaketti). Ilman pakettia autot palautetaan raporttikansion tietokantavarmuuskopioista.

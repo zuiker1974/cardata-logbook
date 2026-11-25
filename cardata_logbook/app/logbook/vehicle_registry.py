@@ -298,8 +298,8 @@ def validate_vehicle(v: VehicleConfig) -> list[str]:
         errors.append("Polttoaine-entiteetti on asetettu sähköautolle (BEV).")
     if v.enabled:
         for role in REQUIRED_ROLES:
-            # VIN:llä varustetun auton entiteetit voivat löytyä vasta HA-yhteyden auettua
-            if not v.entity(role) and not (v.auto_discover and v.vin):
+            # automaattisesti haettavat entiteetit löytyvät vasta HA-yhteyden auettua
+            if not v.entity(role) and not v.auto_discover:
                 errors.append(f"Pakollinen entiteetti '{role}' puuttuu.")
     return errors
 
@@ -376,11 +376,13 @@ def load_settings(path: str | None = None) -> Settings:
     options = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
     if not p.exists():
         _LOG.warning("Asetustiedostoa %s ei löydy, käytetään oletuksia", path)
-    from .transfer import import_package_if_fresh
+    from .transfer import import_backups_if_fresh, import_package_if_fresh
 
+    export_dir = options.get("export_dir") or Settings.export_dir
     try:
-        import_package_if_fresh(data_dir, options.get("export_dir") or Settings.export_dir)
+        if not import_package_if_fresh(data_dir, export_dir):
+            import_backups_if_fresh(data_dir, export_dir)
     except Exception:
-        _LOG.exception("Siirtopaketin tuonti epäonnistui")
+        _LOG.exception("Siirtopaketin tai varmuuskopioiden tuonti epäonnistui")
     store = VehicleStore(data_dir).load_or_migrate(options)
     return parse_settings(options, data_dir=data_dir, store=store)

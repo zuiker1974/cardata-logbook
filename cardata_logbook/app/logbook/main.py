@@ -188,23 +188,34 @@ class LogbookApp:
             if found:
                 self.settings.stream_status_entity = found
 
-    def _fill_vin(self, v) -> None:
-        """Täydentää VIN:n autolle, jonka käsin asetetut entiteetit kuuluvat löydettyyn CarData-autoon."""
+    def _match_vin(self, v) -> str:
         own = set(v.overrides.values())
         for vin, d in self.discovered.items():
-            if own & set(d.entities.values()):
-                v.vin = vin
-                _LOG.info("%s: VIN täydennetty CarData-integraatiosta", v.id)
-                try:
-                    data = self.store.load()
-                    if data is not None:
-                        for raw in data["vehicles"]:
-                            if raw.get("id") == v.id and not raw.get("vin"):
-                                raw["vin"] = vin
-                        self.store.save(data)
-                except Exception:
-                    _LOG.exception("%s: VIN:n tallennus epäonnistui", v.id)
-                return
+            if own and own & set(d.entities.values()):
+                return vin
+        if own or not v.enabled:
+            return ""
+        # ei käsin asetettuja entiteettejä (esim. varmuuskopiosta palautettu auto): yksiselitteinen malli
+        taken = {x.vin for x in self.settings.vehicles if x.vin}
+        model = (v.model or "").lower()
+        hits = [vin for vin, d in self.discovered.items() if vin not in taken and d.model and d.model.lower() in model]
+        return hits[0] if len(hits) == 1 else ""
+
+    def _fill_vin(self, v) -> None:
+        """Täydentää puuttuvan VIN:n autolle, joka vastaa yksiselitteisesti löydettyä CarData-autoa."""
+        vin = self._match_vin(v)
+        if vin:
+            v.vin = vin
+            _LOG.info("%s: VIN täydennetty CarData-integraatiosta", v.id)
+            try:
+                data = self.store.load()
+                if data is not None:
+                    for raw in data["vehicles"]:
+                        if raw.get("id") == v.id and not raw.get("vin"):
+                            raw["vin"] = vin
+                    self.store.save(data)
+            except Exception:
+                _LOG.exception("%s: VIN:n tallennus epäonnistui", v.id)
 
     def _update_zones(self, by_id: dict) -> None:
         self.zones.clear()
