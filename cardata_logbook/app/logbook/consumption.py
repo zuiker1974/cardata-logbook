@@ -13,6 +13,9 @@ Lataus (mitattu BMW 530e:n datasta 11/2026):
   kytkennän ajan ja nollautuu, kun kaapeli irrotetaan. Laskurin maksimi on istunnon
   energia seinästä. Laskurin nollautuminen kesken
   kytkennän aloittaa uuden osan, jonka energia lisätään;
+* jos auto lähtee liikkeelle kytkentätiedon jäädessä päälle (BMW ei aina ilmoita irrotusta),
+  kytkentä päätetään siirtymästä. Seuraava lataus tunnistetaan silloin auton lataustilasta
+  (CHARGINGACTIVE), koska latausmenetelmä ei muutu eikä siitä tule uutta tapahtumaa;
 * muualla ladattaessa energia arvioidaan varaustason noususta (kWh / %), ja rivi
   merkitään arvioksi.
 
@@ -27,7 +30,7 @@ import logging
 import math
 import os
 from dataclasses import asdict, dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -43,6 +46,7 @@ ZERO_KWH = 0.05
 PRE_PLUG_WINDOW_S = 3600  # laturi voi alkaa laskea enintään tunnin ennen kuin auto ilmoittaa kytkennän
 MOVE_AWAY_M = 300  # kytketty auto siirtyi: kytkentä on päättynyt, vaikka tieto puuttuu
 REFUEL_MERGE_S = 3600
+CHARGING_ACTIVE = {"CHARGINGACTIVE", "CHARGING"}
 MIN_CHARGE_KWH = 0.1
 
 
@@ -197,6 +201,8 @@ class ConsumptionTracker:
                 changed = True
         elif role == "charging_method":
             changed = self._on_method(state, ts_iso)
+        elif role == "charging_state":
+            changed = self._on_charging_state(state, ts_iso)
         elif role == "charger_energy":
             changed = self._on_counter(charger_kwh(state, attributes), ts_iso)
         elif role == "fuel_level":
@@ -239,6 +245,21 @@ class ConsumptionTracker:
             self._finish_plug(ts)
         elif plugged and self.s.plug is not None:
             self.s.plug.method = state
+        return True
+
+    def _on_charging_state(self, state: str, ts: str) -> bool:
+        """Lataus alkoi ilman uutta kytkentätietoa: aloitetaan kytkentä lataustilasta.
+
+        Tapahtuu, kun edellinen kytkentä päätettiin auton siirryttyä, mutta auton
+        latausmenetelmä jäi samaksi (esim. AC_TYPE2PLUG koko päivän).
+        """
+        if self.s.plug is not None:
+            return False
+        if state.upper().replace("_", "").replace(" ", "") not in CHARGING_ACTIVE:
+            return False
+        method = self.s.method if self.s.method and self.s.method not in UNPLUGGED else "AC"
+        _LOG.info("%s: lataus alkoi ilman kytkentätietoa, kytkentä aloitetaan lataustilasta", self.vehicle.id)
+        self._start_plug(method, ts)
         return True
 
     def _start_plug(self, method: str, ts: str) -> None:
@@ -381,4 +402,42 @@ class ConsumptionTracker:
             self.on_refuel(event)
 
 
-__all__ = ["ConsumptionTracker", "charger_kwh"]
+def _overlaps(ev: dict, other: dict) -> bool:
+    a0, a1 = ev["start_time"], ev.get("end_time") or ev["start_time"]
+    b0, b1 = other["start_time"], other.get("end_time") or other["start_time"]
+    return a0 <= b1 and b0 <= a1
+
+
+def recover_charges(
+    vehicle: VehicleConfig,
+    settings: Settings,
+    events: list[tuple[datetime, str, str, dict]],
+    window_start: datetime,
+    existing: list[dict],
+    zones: list | None = None,
+) -> list[dict]:
+    """Käy HA:n historian uudelleen läpi ja palauttaa lataukset, jotka puuttuvat kirjanpidosta.
+
+    events: (aika, rooli, tila, attribuutit) aikajärjestyksessä. Lataus, joka oli jo kesken
+    ikkunan alussa, ohitetaan (sen alkua ei tiedetä). Lataus ohitetaan myös, jos se menee
+    ajallisesti päällekkäin minkä tahansa jo kirjatun latauksen kanssa.
+    """
+    found: list[dict] = []
+    ct = ConsumptionTracker(vehicle, settings, on_charge=found.append, zones=zones)
+    for ts, role, state, attrs in events:
+        ct.process(role, state, attrs, ts)
+    cutoff = timeutil.to_iso(window_start + timedelta(seconds=1))
+    charges = [e for e in existing if e.get("kind") == "charge"]
+    out = []
+    for ev in found:
+        if ev["start_time"] <= cutoff:
+            continue
+        if any(_overlaps(ev, old) for old in charges):
+            continue
+        ev["note"] = "palautettu Home Assistantin historiasta"
+        out.append(ev)
+        charges.append(ev)
+    return out
+
+
+__all__ = ["ConsumptionTracker", "charger_kwh", "recover_charges"]

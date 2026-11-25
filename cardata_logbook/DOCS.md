@@ -118,6 +118,9 @@ näkymänsä (`/v/<tunniste>`). Kaikkien autojen yhteistä näkymää ei ole.
   (energia seinästä, sisältää lataushäviöt). BMW ilmoittaa kytkennän joskus jopa 40 min myöhässä, joten
   laturin juuri ennen kytkentätietoa alkanut istunto lasketaan mukaan. Muualla ladattu energia arvioidaan
   varaustason noususta (`charge_kwh_per_pct`), ja rivi merkitään arvioksi.
+  BMW ei aina ilmoita kaapelin irrotusta, jolloin latausmenetelmä jää päälle koko päiväksi. Kun auto
+  on lähtenyt liikkeelle, seuraava lataus (esim. työpaikalla) tunnistetaan auton lataustilasta
+  (`CHARGINGACTIVE`).
 - **Tankkaus (PHEV ja ICE):** tankin litramäärän nousu vähintään `refuel_min_l` litraa. Auto ilmoittaa vain
   kokonaisia litroja, joten tarkkuus on noin ±1 l. Aika ja paikka ovat se hetki, jolloin auto ilmoitti
   nousun.

@@ -297,3 +297,72 @@ def test_shared_charger_entity_routes_to_each_vehicle(tmp_path):
     assert app.services["ix3"].consumption.s.counter == 1.5
     # ajotunnistus ei saa kulurooleja
     assert app.services["530e"].trip_manager.ignored_duplicates == 0
+
+
+def _work_day(sim):
+    """25.11.2026: kotona yön yli kytkettynä, aamulla ajoon ilman irrotustietoa, lataus työpaikalla."""
+    sim.at(1).ev("soc", 4.7).wh(0).ev("charging_method", "AC_TYPE2PLUG")
+    sim.at(300).wh(462)
+    sim.at(308).wh(0)  # kaapeli irti kotilaturista, auto ei ilmoita
+    sim.at(313).ev("location", "not_home", {"latitude": HOME[0] + 0.1, "longitude": HOME[1]})
+    sim.at(335).ev("soc", 10.2)
+    sim.at(453).ev("charging_state", "CHARGINGACTIVE").ev("soc", 10.3)
+    sim.at(543).ev("soc", 68.5)
+    sim.at(633).ev("soc", 100).ev("charging_state", "CHARGINGENDED")
+    sim.at(704).ev("soc", 96.4).ev("charging_state", "NOCHARGING").ev("charging_method", "NOCHARGING")
+
+
+def test_away_charge_after_driving_off_with_plug_flag_on_is_detected():
+    sim = CSim()
+    _work_day(sim)
+    assert [e["source"] for e in sim.events] == ["charger", "estimate"]
+    home, work = sim.events
+    assert home["quantity"] == 0.46 and home["at_home"] == 1
+    assert work["at_home"] == 0 and work["soc_start"] == 10.2 and work["soc_end"] == 96.4
+    assert work["quantity"] == round(89.8 * 0.12, 2)
+    assert work["start_time"] == timeutil.to_iso(T0 + timedelta(minutes=453))
+
+
+def test_charging_state_does_not_split_running_plug():
+    sim = CSim()
+    sim.at(1).ev("soc", 20).wh(0).ev("charging_method", "AC_TYPE2PLUG")
+    sim.at(5).ev("charging_state", "CHARGINGACTIVE")
+    sim.at(30).wh(3000)
+    sim.at(40).ev("charging_state", "CHARGINGENDED")
+    sim.at(50).ev("charging_state", "CHARGINGACTIVE")
+    sim.at(90).ev("charging_method", "NOCHARGING")
+    assert len(sim.events) == 1 and sim.events[0]["quantity"] == 3.0
+
+
+def test_recover_charges_adds_only_missing():
+    from logbook.consumption import recover_charges
+
+    s, v, _ = cfg()
+    rec = []
+
+    class Rec:
+        def __init__(self):
+            self.t = T0
+
+        def at(self, minutes):
+            self.t = T0 + timedelta(minutes=minutes)
+            return self
+
+        def ev(self, role, state, attrs=None):
+            rec.append((self.t, role, str(state), attrs or {}))
+            return self
+
+        def wh(self, value):
+            return self.ev("charger_energy", value, {"unit_of_measurement": "Wh"})
+
+    r = Rec()
+    r.at(0).ev("location", "home", {"latitude": HOME[0], "longitude": HOME[1]})
+    _work_day(r)
+    zones = [Zone("zone.home", HOME[0], HOME[1], 100)]
+    # ikkuna alkaa kesken kotikytkennän: se ohitetaan, työpaikan lataus palautetaan
+    out = recover_charges(v, s, rec, T0 + timedelta(minutes=1), [], zones=zones)
+    assert len(out) == 1 and out[0]["source"] == "estimate" and out[0]["at_home"] == 0
+    assert "historiasta" in out[0]["note"]
+    # jo kirjattu (esim. käsin) lataus samalla ajalla estää palautuksen
+    manual = {"kind": "charge", "start_time": timeutil.to_iso(T0 + timedelta(minutes=500)), "end_time": None}
+    assert recover_charges(v, s, rec, T0 + timedelta(minutes=1), [manual], zones=zones) == []
